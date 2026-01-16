@@ -1,7 +1,7 @@
 """
 Модуль с состояниями FSM (Finite State Machine) для бота.
 
-Используется для пошагового ввода данных при добавлении задачи.
+Используется для пошагового ввода данных при добавлении и удалении задач.
 """
 from aiogram.fsm.state import State, StatesGroup
 
@@ -18,3 +18,10 @@ class AddTaskStates(StatesGroup):
     waiting_for_text = State()  # Ожидание текста задачи
     waiting_for_responsible = State()  # Ожидание ФИО ответственного
     waiting_for_deadline = State()  # Ожидание даты завершения
+
+
+class DeleteTaskStates(StatesGroup):
+    """
+    Состояния для процесса удаления задачи.
+    """
+    waiting_for_task_id = State()  # Ожидание ID задачи для удаления

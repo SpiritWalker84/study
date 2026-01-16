@@ -18,7 +18,8 @@ import io
 
 from bot.database.db import Database
 from bot.keyboards.inline import get_main_menu_keyboard, get_skip_keyboard
-from bot.handlers.states import AddTaskStates
+from bot.handlers.states import AddTaskStates, DeleteTaskStates
+from bot.handlers.validators import validate_deadline
 
 
 # Создаём роутер для команд
@@ -126,8 +127,8 @@ async def skip_responsible(callback: CallbackQuery, state: FSMContext):
         state: контекст FSM
     """
     await callback.message.answer(
-        "📅 Введите дату завершения в формате: число, месяц, год\n"
-        "Например: 25, январь, 2025\n"
+        "📅 Введите дату завершения в формате: число месяц год\n"
+        "Например: 25 январь 2025 или 25, январь, 2025\n"
         "(или нажмите кнопку 'Пропустить', если не нужно)",
         reply_markup=get_skip_keyboard()
     )
@@ -153,8 +154,8 @@ async def process_responsible(message: Message, state: FSMContext):
     
     # Запрашиваем дату завершения
     await message.answer(
-        "📅 Введите дату завершения в формате: число, месяц, год\n"
-        "Например: 25, январь, 2025\n"
+        "📅 Введите дату завершения в формате: число месяц год\n"
+        "Например: 25 январь 2025 или 25, январь, 2025\n"
         "(или нажмите кнопку 'Пропустить', если не нужно)",
         reply_markup=get_skip_keyboard()
     )
@@ -210,13 +211,27 @@ async def process_deadline(message: Message, state: FSMContext):
     """
     Обработчик ввода даты завершения.
     
-    Сохраняет дату и завершает процесс добавления задачи.
+    Валидирует дату и завершает процесс добавления задачи.
     
     Args:
         message: объект сообщения от пользователя
         state: контекст FSM
     """
     deadline = message.text.strip()
+    
+    # Валидируем дату
+    is_valid, error_message = validate_deadline(deadline)
+    
+    if not is_valid:
+        # Если дата неверная, просим ввести снова
+        await message.answer(
+            f"❌ {error_message}\n\n"
+            f"📅 Введите дату завершения в формате: число месяц год\n"
+            f"Например: 25 январь 2025 или 25, январь, 2025\n"
+            f"(или нажмите кнопку 'Пропустить', если не нужно)",
+            reply_markup=get_skip_keyboard()
+        )
+        return  # Не очищаем состояние, остаёмся в waiting_for_deadline
     
     # Получаем все данные из состояния
     data = await state.get_data()
@@ -474,3 +489,88 @@ async def cmd_list_csv(message: Message):
         
     except Exception as e:
         await message.answer(f"❌ Ошибка при создании CSV-файла: {e}")
+
+
+# Обработчики для удаления задачи
+@router.callback_query(F.data == "delete_task")
+async def callback_delete_task(callback: CallbackQuery, state: FSMContext):
+    """
+    Обработчик кнопки "Удалить задачу".
+    
+    Начинает процесс удаления задачи через FSM.
+    
+    Args:
+        callback: объект callback-запроса
+        state: контекст FSM
+    """
+    await callback.message.answer("🗑️ Введите ID задачи для удаления:")
+    await state.set_state(DeleteTaskStates.waiting_for_task_id)
+    await callback.answer()
+
+
+@router.message(DeleteTaskStates.waiting_for_task_id)
+async def process_delete_task(message: Message, state: FSMContext):
+    """
+    Обработчик ввода ID задачи для удаления.
+    
+    Удаляет задачу из базы данных.
+    
+    Args:
+        message: объект сообщения от пользователя
+        state: контекст FSM
+    """
+    task_id_str = message.text.strip()
+    
+    # Проверяем, что введён ID (число)
+    try:
+        task_id = int(task_id_str)
+    except ValueError:
+        await message.answer(
+            "❌ ID должен быть числом.\n"
+            "Введите ID задачи для удаления:"
+        )
+        return  # Не очищаем состояние, остаёмся в waiting_for_task_id
+    
+    try:
+        # Получаем информацию о задаче перед удалением
+        task = db.get_task_by_id(task_id)
+        
+        if not task:
+            await message.answer(
+                f"❌ Задача с ID {task_id} не найдена.\n\n"
+                "Проверьте список задач и введите правильный ID:",
+                reply_markup=get_main_menu_keyboard()
+            )
+            await state.clear()
+            return
+        
+        # Удаляем задачу
+        success = db.delete_task(task_id)
+        
+        if success:
+            task_id, text, user, responsible, deadline, created_at = task
+            result_text = (
+                f"✅ Задача удалена!\n\n"
+                f"ID: {task_id}\n"
+                f"Задача: {text}\n"
+            )
+            if responsible:
+                result_text += f"Ответственный: {responsible}\n"
+            if deadline:
+                result_text += f"Срок: {deadline}\n"
+            
+            await message.answer(result_text, reply_markup=get_main_menu_keyboard())
+        else:
+            await message.answer(
+                f"❌ Ошибка при удалении задачи с ID {task_id}.",
+                reply_markup=get_main_menu_keyboard()
+            )
+        
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer(
+            f"❌ Ошибка при удалении задачи: {e}",
+            reply_markup=get_main_menu_keyboard()
+        )
+        await state.clear()

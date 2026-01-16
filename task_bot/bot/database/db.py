@@ -138,3 +138,53 @@ class Database:
         """
         # Используем тот же метод, что и для обычного списка
         return self.get_all_tasks()
+    
+    def delete_task(self, task_id: int) -> bool:
+        """
+        Удаляет задачу по ID.
+        
+        Args:
+            task_id: ID задачи для удаления
+        
+        Returns:
+            bool: True если задача удалена, False если задача не найдена
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли задача
+        cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
+        task = cursor.fetchone()
+        
+        if not task:
+            conn.close()
+            return False
+        
+        # Удаляем задачу
+        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+        conn.close()
+        
+        return True
+    
+    def get_task_by_id(self, task_id: int) -> Tuple | None:
+        """
+        Получает задачу по ID.
+        
+        Args:
+            task_id: ID задачи
+        
+        Returns:
+            Tuple | None: кортеж (id, text, user, responsible, deadline, created_at) или None
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id, text, user, responsible, deadline, created_at FROM tasks WHERE id = ?",
+            (task_id,)
+        )
+        task = cursor.fetchone()
+        
+        conn.close()
+        return task

@@ -22,6 +22,9 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📋 Список задач", callback_data="list_tasks")
             ],
             [
+                InlineKeyboardButton(text="🗑️ Удалить задачу", callback_data="delete_task")
+            ],
+            [
                 InlineKeyboardButton(text="📄 Экспорт в CSV", callback_data="export_csv")
             ],
             [
